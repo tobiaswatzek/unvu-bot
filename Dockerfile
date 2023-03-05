@@ -20,4 +20,5 @@ RUN apt-get update && apt-get install -y libopus-dev && rm -rf /var/lib/apt/list
 COPY --from=builder /usr/local/cargo/bin/unvu-bot /usr/local/bin/unvu-bot
 ENV UNVU_BOT_SECRET=
 ENV GUILD_ID=
+ENV RUST_LOG=warn
 CMD ["unvu-bot"]

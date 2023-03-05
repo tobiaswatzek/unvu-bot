@@ -7,14 +7,16 @@ use serenity::model::prelude::interaction::{Interaction, InteractionResponseType
 use serenity::model::prelude::{GuildId, Ready};
 use serenity::prelude::{Context, EventHandler, GatewayIntents};
 use serenity::{async_trait, Client};
+use tracing::{debug, error, instrument, warn};
 
 struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
+    #[instrument(skip(self, ctx))]
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            println!("Received command interaction: {:#?}", command);
+            debug!("Received command interaction: {:#?}", command);
 
             let content = match command.data.name.as_str() {
                 "ping" => commands::ping::run(&command.data.options),
@@ -29,13 +31,14 @@ impl EventHandler for Handler {
                 })
                 .await
             {
-                println!("Cannot respond to slash command: {}", why);
+                warn!("cannot respond to slash command: {}", why);
             }
         }
     }
 
+    #[instrument(skip(self, ctx, ready))]
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        debug!("bot {} is connected", ready.user.name);
 
         let guild_id = GuildId(
             env::var("GUILD_ID")
@@ -49,39 +52,39 @@ impl EventHandler for Handler {
         })
         .await;
 
-        println!(
-            "I now have the following guild slash commands: {:#?}",
-            commands
-        );
+        if let Err(err) = commands {
+            error!("error when setting commands for guild {}: {}", guild_id, err);
+            panic!("guild commands could not be set");
+        }
 
+        debug!("set commands for guild {}", guild_id);
     }
 }
 
 #[tokio::main]
+#[instrument]
 async fn main() {
-    let secret = load_env();
+    dotenv().ok();
+    tracing_subscriber::fmt::init();
+    let secret = load_env().expect("error loading required environment variables");
 
     // Build our client.
     let mut client = Client::builder(secret, GatewayIntents::empty())
         .event_handler(Handler)
         .await
-        .expect("Error creating client");
+        .expect("error creating client");
 
-    // Finally, start a single shard, and start listening to events.
-    //
-    // Shards will automatically attempt to reconnect, and will perform
-    // exponential backoff until it reconnects.
     if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
+        error!("client error {}", why);
     }
 }
 
-fn load_env() -> String {
+fn load_env() -> Option<String> {
     const ENV_KEY: &str = "UNVU_BOT_SECRET";
-    dotenv().ok();
     let secret = env::var(ENV_KEY).expect(format!("{ENV_KEY} has to be set").as_str());
     if secret.trim().is_empty() {
-        panic!("{ENV_KEY} is empty or whitespace")
+        error!("environment variable {} is empty or whitespace", ENV_KEY);
+        return None;
     }
-    secret
+    Some(secret)
 }
