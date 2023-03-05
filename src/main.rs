@@ -1,13 +1,17 @@
 mod commands;
 
 use std::env;
+use std::sync::Arc;
 
 use dotenv::dotenv;
+use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::prelude::interaction::{Interaction, InteractionResponseType};
 use serenity::model::prelude::{GuildId, Ready};
-use serenity::prelude::{Context, EventHandler, GatewayIntents};
+use serenity::prelude::{Context, EventHandler, GatewayIntents, Mutex};
 use serenity::{async_trait, Client};
-use tracing::{debug, error, instrument, warn};
+use tokio::signal::ctrl_c;
+use tokio::signal::unix::{signal, SignalKind};
+use tracing::{debug, error, info, instrument, warn};
 
 struct Handler;
 
@@ -53,13 +57,19 @@ impl EventHandler for Handler {
         .await;
 
         if let Err(err) = commands {
-            error!("error when setting commands for guild {}: {}", guild_id, err);
+            error!(
+                "error when setting commands for guild {}: {}",
+                guild_id, err
+            );
             panic!("guild commands could not be set");
         }
 
         debug!("set commands for guild {}", guild_id);
     }
 }
+
+#[derive(Debug, Clone)]
+struct ShutdownSignal;
 
 #[tokio::main]
 #[instrument]
@@ -74,9 +84,22 @@ async fn main() {
         .await
         .expect("error creating client");
 
+    tokio::spawn(handle_shutdown(client.shard_manager.clone()));
+
     if let Err(why) = client.start().await {
         error!("client error {}", why);
     }
+}
+
+#[instrument(skip(shard_manager))]
+async fn handle_shutdown(shard_manager: Arc<Mutex<ShardManager>>) {
+    let mut sigterm = signal(SignalKind::terminate()).expect("could not register SIGTERM listener");
+    tokio::select! {
+        _ = ctrl_c() => info!("received CTRL+C signal"),
+        _ = sigterm.recv() => info!("received SIGTERM signal"),
+    };
+
+    shard_manager.lock().await.shutdown_all().await;
 }
 
 fn load_env() -> Option<String> {
