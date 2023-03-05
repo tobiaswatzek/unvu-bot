@@ -9,6 +9,7 @@ use serenity::model::prelude::interaction::{Interaction, InteractionResponseType
 use serenity::model::prelude::{GuildId, Ready};
 use serenity::prelude::{Context, EventHandler, GatewayIntents, Mutex};
 use serenity::{async_trait, Client};
+use songbird::SerenityInit;
 use tokio::signal::ctrl_c;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, instrument, warn};
@@ -24,6 +25,7 @@ impl EventHandler for Handler {
 
             let content = match command.data.name.as_str() {
                 "ping" => commands::ping::run(&command.data.options),
+                "bing" => commands::bing::run(&command, &ctx).await,
                 _ => "not implemented :(".to_string(),
             };
 
@@ -52,7 +54,9 @@ impl EventHandler for Handler {
         );
 
         let commands = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
-            commands.create_application_command(|command| commands::ping::register(command))
+            commands
+                .create_application_command(|command| commands::ping::register(command))
+                .create_application_command(|command| commands::bing::register(command))
         })
         .await;
 
@@ -79,8 +83,9 @@ async fn main() {
     let secret = load_env().expect("error loading required environment variables");
 
     // Build our client.
-    let mut client = Client::builder(secret, GatewayIntents::empty())
+    let mut client = Client::builder(secret, GatewayIntents::GUILD_VOICE_STATES)
         .event_handler(Handler)
+        .register_songbird()
         .await
         .expect("error creating client");
 

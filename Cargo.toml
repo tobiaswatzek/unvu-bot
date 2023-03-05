@@ -9,6 +9,7 @@ edition = "2021"
 dotenv = "0.15.0"
 songbird = "0.3.1"
 tracing = "0.1.37"
+anyhow = "1.0.69"
 
 [dependencies.tracing-subscriber]
 version = "0.3.16"
@@ -22,4 +23,4 @@ features = ["macros", "signal", "rt-multi-thread"]
 [dependencies.serenity]
 version = "0.11.5"
 default_features = false
-features = ["client", "gateway", "rustls_backend", "model", "voice"]
+features = ["client", "cache", "gateway", "rustls_backend", "model", "voice"]
