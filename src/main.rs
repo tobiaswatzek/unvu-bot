@@ -24,20 +24,28 @@ impl EventHandler for Handler {
             debug!("Received command interaction: {:#?}", command);
 
             let content = match command.data.name.as_str() {
-                "ping" => commands::ping::run(&command.data.options),
-                "bing" => commands::bing::run(&command, &ctx).await,
-                _ => "not implemented :(".to_string(),
+                "ping" => Some(commands::ping::run(&command.data.options)),
+                "bing" => {
+                    commands::bing::run(&command, &ctx).await;
+                    None
+                }
+                _ => Some("not implemented :(".to_string()),
             };
 
-            if let Err(why) = command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content(content))
-                })
-                .await
-            {
-                warn!("cannot respond to slash command: {}", why);
+            match content {
+                Some(s) => {
+                    if let Err(why) = command
+                        .create_interaction_response(&ctx.http, |response| {
+                            response
+                                .kind(InteractionResponseType::ChannelMessageWithSource)
+                                .interaction_response_data(|message| message.content(s))
+                        })
+                        .await
+                    {
+                        warn!("cannot respond to slash command: {}", why);
+                    }
+                }
+                None => {}
             }
         }
     }
@@ -83,11 +91,14 @@ async fn main() {
     let secret = load_env().expect("error loading required environment variables");
 
     // Build our client.
-    let mut client = Client::builder(secret, GatewayIntents::GUILD_VOICE_STATES)
-        .event_handler(Handler)
-        .register_songbird()
-        .await
-        .expect("error creating client");
+    let mut client = Client::builder(
+        secret,
+        GatewayIntents::GUILDS | GatewayIntents::GUILD_MEMBERS | GatewayIntents::GUILD_VOICE_STATES,
+    )
+    .event_handler(Handler)
+    .register_songbird()
+    .await
+    .expect("error creating client");
 
     tokio::spawn(handle_shutdown(client.shard_manager.clone()));
 
